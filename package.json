@@ -1,0 +1,15 @@
+{
+  "name": "msgwall",
+  "version": "1.0.0",
+  "description": "Real-time message wall via webhook, high-frequency markdown messages",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "markdown-it": "^14.0.0",
+    "uuid": "^10.0.0"
+  }
+}
