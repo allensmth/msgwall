@@ -451,10 +451,10 @@
   toggleBtn.addEventListener('click', () => {
     const isCollapsed = sidebar.classList.toggle('collapsed');
     if (isCollapsed) {
-      toggleBtn.innerHTML = '&gt;';
+      toggleBtn.textContent = '>';
       toggleBtn.setAttribute('title', 'Expand Sidebar');
     } else {
-      toggleBtn.innerHTML = '&lt;';
+      toggleBtn.textContent = '<';
       toggleBtn.setAttribute('title', 'Collapse Sidebar');
     }
   });
@@ -487,8 +487,7 @@
     html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
     html = html.replace(/`(.*?)`/g, '<code>$1</code>');
 
-    html = html.split('
-').map(line => {
+    html = html.split('\n').map(line => {
       if (line.trim().startsWith('&gt;')) {
         return line.replace('&gt;', '&gt;');
       }
