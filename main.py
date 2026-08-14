@@ -83,16 +83,10 @@ async def message_stream(request: Request):
                 
                 try:
                     news_data = await asyncio.wait_for(queue.get(), timeout=1.0)
-                    yield f"event: news
-data: {json.dumps(news_data)}
-
-"
+                    yield f"event: news\ndata: {json.dumps(news_data)}\n\n"
                 except asyncio.TimeoutError:
                     # 发送心跳数据包，维持 SSE 长连接
-                    yield "event: heartbeat
-data: ping
-
-"
+                    yield "event: heartbeat\ndata: ping\n\n"
                     
         except asyncio.CancelledError:
             logger.info("SSE connection cancelled.")
