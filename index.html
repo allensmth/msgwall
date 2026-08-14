@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>Terminal News Stream - Fullscreen</title>
+  <style>
+    :root {
+      --term-bg: #0d1117;
+      --term-panel: #0a0e14;
+      --term-line: #1c232c;
+      --term-green: #3fd67a;
+      --term-cyan: #4fd6e0;
+      --term-amber: #e0a83f;
+      --term-red: #e0645a;
+      --term-text: #c7d1db;
+      --term-dim: #5a6470;
+      --term-purple: #b48bd9;
+      font-family: ui-monospace, SFMono-Regular, "Cascadia Code", "Fira Code", Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: #07090e;
+      color: var(--term-text);
+      overflow: hidden;
+    }
+
+    /* 整体全屏布局 */
+    .app-container {
+      display: flex;
+      flex-direction: column;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    /* 顶部通栏状态栏 */
+    .term-status-bar {
+      background: var(--term-panel);
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--term-line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+    .status-text {
+      font-size: 12px;
+      color: var(--term-dim);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--term-dim);
+      transition: background 0.3s;
+    }
+    .status-dot.connected {
+      background: var(--term-green);
+    }
+    .status-dot.disconnected {
+      background: var(--term-red);
+    }
+    .system-title {
+      font-size: 12px;
+      color: var(--term-green);
+      font-weight: bold;
+    }
+
+    /* 主体左右分栏布局 */
+    .main-layout {
+      display: flex;
+      flex: 1;
+      width: 100%;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* 左侧边栏 - 初始展开 160px，支持收起为 48px */
+    .sidebar {
+      width: 160px;
+      background: var(--term-panel);
+      border-right: 1px solid var(--term-line);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      padding: 16px 8px;
+      gap: 20px;
+      transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), padding 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+    }
+    
+    .sidebar.collapsed {
+      width: 48px;
+      padding: 16px 4px;
+    }
+
+    /* 展开/收起切换按钮 */
+    .toggle-sidebar-btn {
+      position: absolute;
+      top: 12px;
+      right: -12px;
+      width: 22px;
+      height: 22px;
+      background: var(--term-panel);
+      border: 1px solid var(--term-line);
+      border-radius: 999px;
+      color: var(--term-dim);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 10;
+      font-size: 11px;
+      user-select: none;
+      transition: background 0.2s, color 0.2s, transform 0.3s;
+    }
+    .toggle-sidebar-btn:hover {
+      background: var(--term-bg);
+      color: var(--term-green);
+    }
+
+    .sidebar-section-title {
+      font-size: 9.5px;
+      color: var(--term-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 10px;
+      border-bottom: 1px dashed var(--term-line);
+      padding-bottom: 6px;
+      padding-left: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      transition: opacity 0.2s;
+    }
+    
+    .sidebar.collapsed .sidebar-section-title {
+      opacity: 0;
+      pointer-events: none;
+    }
+    
+    /* 垂直排列的筛选器按钮 */
+    .filter-list {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .tm-chip {
+      border: 1px solid var(--term-line);
+      background: transparent;
+      color: var(--term-text);
+      font-size: 11px;
+      padding: 5px 8px;
+      border-radius: 3px;
+      font-family: inherit;
+      cursor: pointer;
+      text-align: left;
+      transition: all 0.2s;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      overflow: hidden;
+    }
+    .sidebar.collapsed .tm-chip {
+      justify-content: center;
+      padding: 6px 0;
+    }
+    .sidebar.collapsed .tm-chip span:first-child {
+      display: none; /* 折叠状态隐藏文字部分 */
+    }
+    .tm-chip:hover {
+      background: rgba(255, 255, 255, 0.02);
+      border-color: var(--term-dim);
+    }
+    .tm-chip.active {
+      border-color: var(--term-green);
+      color: var(--term-green);
+      background: rgba(63, 214, 122, 0.06);
+    }
+    .chip-count {
+      font-size: 9.5px;
+      color: var(--term-dim);
+      background: rgba(255,255,255,0.05);
+      padding: 1px 4px;
+      border-radius: 3px;
+      transition: font-size 0.2s;
+    }
+    .sidebar.collapsed .chip-count {
+      font-size: 10px;
+      background: transparent;
+      color: inherit;
+      padding: 0;
+    }
+
+    /* 系统状态小卡片 */
+    .sys-metric {
+      background: rgba(255,255,255,0.01);
+      border: 1px solid var(--term-line);
+      border-radius: 3px;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      transition: opacity 0.2s;
+    }
+    .sidebar.collapsed .sys-metric {
+      opacity: 0;
+      pointer-events: none;
+    }
+    .metric-label {
+      font-size: 9.5px;
+      color: var(--term-dim);
+    }
+    .metric-value {
+      font-size: 13px;
+      color: var(--term-green);
+      font-weight: bold;
+    }
+
+    /* 右侧主消息展示流 */
+    .content-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background: var(--term-bg);
+      overflow: hidden;
+    }
+
+    .stream-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px 0;
+    }
+
+    /* 消息条目 */
+    .tm-line {
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--term-line);
+      animation: fadeIn 0.25s ease-out;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .tm-line:hover {
+      background: rgba(255, 255, 255, 0.01);
+    }
+    .tm-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+    }
+    .tm-tag {
+      font-size: 11px;
+      padding: 1px 5px;
+      border-radius: 3px;
+      background: rgba(255,255,255,0.05);
+    }
+    .tm-time {
+      color: var(--term-dim);
+    }
+    .tm-body {
+      font-size: 13.5px;
+      line-height: 1.7;
+      color: var(--term-text);
+      max-width: 1050px;
+    }
+    .tm-body strong {
+      color: #fff;
+      font-weight: 600;
+    }
+    .tm-body code {
+      background: rgba(255,255,255,0.08);
+      color: var(--term-cyan);
+      padding: 1px 5px;
+      border-radius: 2px;
+    }
+
+    /* 宽屏下的多图网格排版 */
+    .tm-img-container {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 10px;
+      margin-top: 8px;
+      max-width: 1050px;
+    }
+    .tm-img {
+      border: 1px dashed var(--term-line);
+      border-radius: 4px;
+      height: 120px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--term-dim);
+      font-size: 11px;
+      background: rgba(255,255,255,0.01);
+      transition: all 0.2s;
+    }
+    .tm-img:hover {
+      border-color: var(--term-dim);
+      background: rgba(255,255,255,0.02);
+    }
+
+    /* 滚动条美化 */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: var(--term-line);
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--term-dim);
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(3px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* 移动端/窄屏响应式适配 */
+    @media (max-width: 768px) {
+      .main-layout {
+        flex-direction: column;
+      }
+      .sidebar {
+        width: 100% !important;
+        border-right: none;
+        border-bottom: 1px solid var(--term-line);
+        padding: 12px !important;
+        gap: 12px;
+      }
+      .toggle-sidebar-btn {
+        display: none; /* 移动端隐藏折叠按钮 */
+      }
+      .sidebar-section-title {
+        opacity: 1 !important;
+      }
+      .filter-list {
+        flex-direction: row;
+        overflow-x: auto;
+        padding-bottom: 4px;
+      }
+      .tm-chip {
+        padding: 5px 10px;
+        white-space: nowrap;
+      }
+      .tm-chip span:first-child {
+        display: inline !important;
+      }
+      .sys-metric {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="app-container">
+  <!-- 顶部通栏状态 -->
+  <div class="term-status-bar">
+    <span class="status-text">
+      <span id="conn-dot" class="status-dot"></span>
+      <span id="conn-text">connecting · server: news-feed.tabbit.io</span>
+    </span>
+    <span class="system-title">MONITOR_WEB_STREAM // V1.6</span>
+  </div>
+
+  <div class="main-layout">
+    <!-- 左侧控制和过滤器面板 -->
+    <div class="sidebar" id="sidebar">
+      <!-- 侧边栏折叠按钮 -->
+      <div class="toggle-sidebar-btn" id="toggle-sidebar-btn" title="Toggle Sidebar">&lt;</div>
+      
+      <div>
+        <div class="sidebar-section-title">CHANNELS</div>
+        <div class="filter-list">
+          <button class="tm-chip active" data-filter="all" title="Show All">
+            <span>--all</span>
+            <span class="chip-count" id="cnt-all">0</span>
+          </button>
+          <button class="tm-chip" data-filter="tech" title="Tech">
+            <span>--tech</span>
+            <span class="chip-count" id="cnt-tech">0</span>
+          </button>
+          <button class="tm-chip" data-filter="finance" title="Finance">
+            <span>--finance</span>
+            <span class="chip-count" id="cnt-finance">0</span>
+          </button>
+          <button class="tm-chip" data-filter="world" title="World">
+            <span>--world</span>
+            <span class="chip-count" id="cnt-world">0</span>
+          </button>
+          <button class="tm-chip" data-filter="life" title="Life">
+            <span>--life</span>
+            <span class="chip-count" id="cnt-life">0</span>
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <div class="sidebar-section-title">STATUS</div>
+        <div class="sys-metric">
+          <span class="metric-label">EVENTS</span>
+          <span class="metric-value" id="metric-total">0</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右侧大屏主新闻数据流 -->
+    <div class="content-area">
+      <div class="stream-container" id="stream-box">
+        <!-- 实时推流消息渲染 -->
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const streamBox = document.getElementById('stream-box');
+  const connDot = document.getElementById('conn-dot');
+  const connText = document.getElementById('conn-text');
+  
+  const sidebar = document.getElementById('sidebar');
+  const toggleBtn = document.getElementById('toggle-sidebar-btn');
+
+  const cntAll = document.getElementById('cnt-all');
+  const cntTech = document.getElementById('cnt-tech');
+  const cntFinance = document.getElementById('cnt-finance');
+  const cntWorld = document.getElementById('cnt-world');
+  const cntLife = document.getElementById('cnt-life');
+  const metricTotal = document.getElementById('metric-total');
+
+  let currentFilter = 'all';
+  const allMessages = [];
+
+  const counts = { all: 0, tech: 0, finance: 0, world: 0, life: 0 };
+
+  // 侧边栏折叠交互：点击在 160px 和 48px 之间切换
+  toggleBtn.addEventListener('click', () => {
+    const isCollapsed = sidebar.classList.toggle('collapsed');
+    if (isCollapsed) {
+      toggleBtn.innerHTML = '&gt;';
+      toggleBtn.setAttribute('title', 'Expand Sidebar');
+    } else {
+      toggleBtn.innerHTML = '&lt;';
+      toggleBtn.setAttribute('title', 'Collapse Sidebar');
+    }
+  });
+
+  function updateCounts() {
+    cntAll.textContent = counts.all;
+    cntTech.textContent = counts.tech;
+    cntFinance.textContent = counts.finance;
+    cntWorld.textContent = counts.world;
+    cntLife.textContent = counts.life;
+    metricTotal.textContent = counts.all;
+  }
+
+  function getChannelColor(channel) {
+    const colors = {
+      tech: 'var(--term-cyan)',
+      finance: 'var(--term-amber)',
+      world: 'var(--term-red)',
+      life: 'var(--term-purple)'
+    };
+    return colors[channel] || 'var(--term-text)';
+  }
+
+  function parseMarkdown(text) {
+    let html = text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+
+    html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/`(.*?)`/g, '<code>$1</code>');
+
+    html = html.split('
+').map(line => {
+      if (line.trim().startsWith('&gt;')) {
+        return line.replace('&gt;', '&gt;');
+      }
+      return line;
+    }).join('<br>');
+
+    return html;
+  }
+
+  function appendMessageToDOM(msg, isPrepend = false) {
+    if (currentFilter !== 'all' && msg.channel !== currentFilter) {
+      return;
+    }
+
+    const line = document.createElement('div');
+    line.className = 'tm-line';
+    
+    let imgsHTML = '';
+    if (msg.image_urls && msg.image_urls.length > 0) {
+      imgsHTML = '<div class="tm-img-container">';
+      msg.image_urls.forEach(url => {
+        const fileName = url.split('/').pop() || 'image';
+        imgsHTML += `<div class="tm-img">[ image: ${fileName} ]</div>`;
+      });
+      imgsHTML += '</div>';
+    }
+
+    line.innerHTML = `
+      <div class="tm-meta">
+        <span class="tm-time">${msg.time}</span>
+        <span style="color:var(--term-dim)">[</span><span style="color:${getChannelColor(msg.channel)}" class="tm-tag">${msg.channel}</span><span style="color:var(--term-dim)">]</span>
+        <span style="color:var(--term-green)">@${msg.username}</span><span style="color:var(--term-dim)">:</span>
+      </div>
+      <div class="tm-body">${parseMarkdown(msg.content)}</div>
+      ${imgsHTML}
+    `;
+
+    if (isPrepend) {
+      streamBox.prepend(line);
+    } else {
+      streamBox.appendChild(line);
+      streamBox.scrollTop = streamBox.scrollHeight;
+    }
+  }
+
+  function renderFilteredMessages() {
+    streamBox.innerHTML = '';
+    allMessages.forEach(msg => appendMessageToDOM(msg));
+  }
+
+  document.querySelectorAll('.tm-chip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tm-chip').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentFilter = btn.getAttribute('data-filter');
+      renderFilteredMessages();
+    });
+  });
+
+  function connectSSE() {
+    const eventSource = new EventSource('/stream');
+
+    eventSource.onopen = () => {
+      connDot.className = 'status-dot connected';
+      connText.textContent = 'connected · server: news-feed.tabbit.io · latency 42ms';
+    };
+
+    eventSource.onerror = (err) => {
+      connDot.className = 'status-dot disconnected';
+      connText.textContent = 'disconnected · retrying connection...';
+    };
+
+    eventSource.addEventListener('news', (e) => {
+      const data = JSON.parse(e.data);
+      const now = new Date();
+      const timeStr = now.toTimeString().substring(0, 5);
+      
+      const msg = {
+        time: timeStr,
+        channel: data.channel,
+        username: data.username,
+        content: data.content,
+        image_urls: data.image_urls || []
+      };
+
+      allMessages.push(msg);
+      
+      counts.all += 1;
+      if (counts[msg.channel] !== undefined) {
+        counts[msg.channel] += 1;
+      }
+      updateCounts();
+
+      appendMessageToDOM(msg);
+    });
+  }
+
+  connectSSE();
+</script>
+
+</body>
+</html>
