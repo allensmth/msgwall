@@ -390,22 +390,7 @@
             <span>--all</span>
             <span class="chip-count" id="cnt-all">0</span>
           </button>
-          <button class="tm-chip" data-filter="tech" title="Tech">
-            <span>--tech</span>
-            <span class="chip-count" id="cnt-tech">0</span>
-          </button>
-          <button class="tm-chip" data-filter="finance" title="Finance">
-            <span>--finance</span>
-            <span class="chip-count" id="cnt-finance">0</span>
-          </button>
-          <button class="tm-chip" data-filter="world" title="World">
-            <span>--world</span>
-            <span class="chip-count" id="cnt-world">0</span>
-          </button>
-          <button class="tm-chip" data-filter="life" title="Life">
-            <span>--life</span>
-            <span class="chip-count" id="cnt-life">0</span>
-          </button>
+          <!-- 频道按钮将根据推送消息动态生成 -->
         </div>
       </div>
 
@@ -436,16 +421,28 @@
   const toggleBtn = document.getElementById('toggle-sidebar-btn');
 
   const cntAll = document.getElementById('cnt-all');
-  const cntTech = document.getElementById('cnt-tech');
-  const cntFinance = document.getElementById('cnt-finance');
-  const cntWorld = document.getElementById('cnt-world');
-  const cntLife = document.getElementById('cnt-life');
   const metricTotal = document.getElementById('metric-total');
+  const filterList = document.querySelector('.filter-list');
 
   let currentFilter = 'all';
   const allMessages = [];
 
-  const counts = { all: 0, tech: 0, finance: 0, world: 0, life: 0 };
+  // 动态频道计数：all 为总计数，其余按频道名动态添加
+  const counts = { all: 0 };
+
+  // 频道颜色调色板，按顺序循环分配给新频道
+  const colorPalette = [
+    'var(--term-cyan)',
+    'var(--term-amber)',
+    'var(--term-red)',
+    'var(--term-purple)',
+    'var(--term-green)'
+  ];
+  const channelColors = {};
+  let colorIndex = 0;
+
+  // 已注册的频道集合
+  const registeredChannels = new Set();
 
   // 侧边栏折叠交互：点击在 160px 和 48px 之间切换
   toggleBtn.addEventListener('click', () => {
@@ -461,21 +458,16 @@
 
   function updateCounts() {
     cntAll.textContent = counts.all;
-    cntTech.textContent = counts.tech;
-    cntFinance.textContent = counts.finance;
-    cntWorld.textContent = counts.world;
-    cntLife.textContent = counts.life;
     metricTotal.textContent = counts.all;
+    // 动态更新各频道计数
+    for (const channel of registeredChannels) {
+      const cntEl = document.getElementById('cnt-' + channel);
+      if (cntEl) cntEl.textContent = counts[channel] || 0;
+    }
   }
 
   function getChannelColor(channel) {
-    const colors = {
-      tech: 'var(--term-cyan)',
-      finance: 'var(--term-amber)',
-      world: 'var(--term-red)',
-      life: 'var(--term-purple)'
-    };
-    return colors[channel] || 'var(--term-text)';
+    return channelColors[channel] || 'var(--term-text)';
   }
 
   function parseMarkdown(text) {
@@ -538,6 +530,45 @@
     allMessages.forEach(msg => appendMessageToDOM(msg));
   }
 
+  // 动态注册新频道：创建筛选按钮并分配颜色
+  function addChannel(channel) {
+    if (registeredChannels.has(channel)) return;
+    registeredChannels.add(channel);
+    counts[channel] = 0;
+
+    // 从调色板中循环分配颜色
+    channelColors[channel] = colorPalette[colorIndex % colorPalette.length];
+    colorIndex++;
+
+    // 创建频道筛选按钮
+    const btn = document.createElement('button');
+    btn.className = 'tm-chip';
+    btn.setAttribute('data-filter', channel);
+    btn.setAttribute('title', channel);
+
+    const labelSpan = document.createElement('span');
+    labelSpan.textContent = '--' + channel;
+
+    const countSpan = document.createElement('span');
+    countSpan.className = 'chip-count';
+    countSpan.id = 'cnt-' + channel;
+    countSpan.textContent = '0';
+
+    btn.appendChild(labelSpan);
+    btn.appendChild(countSpan);
+
+    // 绑定筛选点击事件
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tm-chip').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentFilter = btn.getAttribute('data-filter');
+      renderFilteredMessages();
+    });
+
+    filterList.appendChild(btn);
+  }
+
+  // 为初始存在的 "all" 按钮绑定筛选事件
   document.querySelectorAll('.tm-chip').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.tm-chip').forEach(b => b.classList.remove('active'));
@@ -575,10 +606,11 @@
 
       allMessages.push(msg);
       
+      // 动态注册新频道
+      addChannel(msg.channel);
+      
       counts.all += 1;
-      if (counts[msg.channel] !== undefined) {
-        counts[msg.channel] += 1;
-      }
+      counts[msg.channel] = (counts[msg.channel] || 0) + 1;
       updateCounts();
 
       appendMessageToDOM(msg);
