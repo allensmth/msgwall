@@ -302,11 +302,22 @@
       font-size: 11px;
       background: rgba(255,255,255,0.01);
       transition: all 0.2s;
+      overflow: hidden;
     }
     .tm-img:hover {
       border-color: var(--term-dim);
       background: rgba(255,255,255,0.02);
     }
+
+    /* 图片展示样式：填充容器并裁切 */
+    .tm-img img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 4px;
+      display: block;
+    }
+    .tm-img a { display: block; width: 100%; height: 100%; }
 
     /* 滚动条美化 */
     ::-webkit-scrollbar {
@@ -502,7 +513,8 @@
       imgsHTML = '<div class="tm-img-container">';
       msg.image_urls.forEach(url => {
         const fileName = url.split('/').pop() || 'image';
-        imgsHTML += `<div class="tm-img">[ image: ${fileName} ]</div>`;
+        // 包裹 a 标签以便点击查看原图，img 带 onerror 回退文本
+        imgsHTML += `\n          <div class="tm-img">\n            <a href="${url}" target="_blank" rel="noopener noreferrer" title="${fileName}">\n              <img src="${url}" alt="${fileName}" loading="lazy"\n                   onerror="this.style.display='none'; this.parentElement.innerHTML='[image failed]';" />\n            </a>\n          </div>\n        `;
       });
       imgsHTML += '</div>';
     }
